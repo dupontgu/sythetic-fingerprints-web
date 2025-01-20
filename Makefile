@@ -18,7 +18,7 @@ CXXFLAGS = -O3 \
 
 SOURCES = matrix.cpp imgproc.cpp finge.cpp wasm_wrap.cpp
 OBJECTS = $(SOURCES:.cpp=.o)
-DIST_DIR = dist
+DIST_DIR = docs
 TARGET = $(DIST_DIR)/fingerprint.js
 
 all: $(DIST_DIR) $(TARGET)
