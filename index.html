@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Seeded Fingerprint Generator</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 20px auto;
+            padding: 0 20px;
+        }
+        canvas {
+            display: none;
+        }
+        .controls {
+            margin: 20px 0;
+            padding: 20px;
+            background: #f5f5f5;
+            border-radius: 5px;
+        }
+        .control-group {
+            margin-bottom: 15px;
+        }
+        .control-group label {
+            display: block;
+            margin-bottom: 5px;
+        }
+        .control-group input[type="text"] {
+            width: 100%;
+            padding: 8px;
+            font-family: monospace;
+        }
+        button {
+            padding: 10px 20px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        button:disabled {
+            background: #cccccc;
+        }
+        .status {
+            color: #666;
+            font-style: italic;
+        }
+        #svgOutput {
+            border: 1px solid #ccc;
+            margin: 10px 0;
+            padding: 10px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Seeded Fingerprint Generator</h1>
+    
+    <div class="controls">
+        <div class="control-group">
+            <label for="uuid">UUID:</label>
+            <input type="text" id="uuid" placeholder="Enter UUID or click Generate Random">
+        </div>
+        
+        <button onclick="generateFingerprint()" id="generateButton">Generate Fingerprint</button>
+        <button onclick="generateRandomUUID()" id="randomButton">Generate Random UUID</button>
+        <p class="status" id="status">Loading modules...</p>
+    </div>
+
+    <canvas id="fingerprintCanvas"></canvas>
+    <div id="svgOutput"></div>
+
+    <script type="module">
+        import createFingerprint from './fingerprint.js';
+        import { potrace, init } from 'https://cdn.jsdelivr.net/npm/esm-potrace-wasm/+esm';
+
+        let currentFingerprint = null;  // Track the current fingerprint instance
+
+        window.generateRandomUUID = function() {
+            document.getElementById('uuid').value = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+                var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+                return v.toString(16);
+            });
+        };
+
+        window.init = async function() {
+            try {
+                window.fingerprintModule = await createFingerprint();
+                await init();
+                console.log('Modules loaded');
+                document.querySelector('#generateButton').disabled = false;
+                document.querySelector('#randomButton').disabled = false;
+                document.getElementById('status').textContent = 'Ready to generate!';
+                generateRandomUUID();
+            } catch (error) {
+                console.error('Failed to load modules:', error);
+                document.getElementById('status').textContent = 'Error loading modules: ' + error.message;
+            }
+        };
+
+        window.generateFingerprint = async function() {
+            const button = document.getElementById('generateButton');
+            const status = document.getElementById('status');
+            const uuid = document.getElementById('uuid').value.trim();
+            
+            if (!uuid) {
+                status.textContent = 'Please enter a UUID first';
+                return;
+            }
+
+            button.disabled = true;
+            status.textContent = 'Generating...';
+
+            try {
+                if (!currentFingerprint) {
+                    currentFingerprint = new window.fingerprintModule.Fingerprint();
+                }
+                currentFingerprint.generateFromSeed(uuid);
+                
+                // Get and log debug info
+                const debugInfo = currentFingerprint.getDebugInfo();
+                console.log('Generated parameters for UUID', uuid);
+                console.log('Number of cores:', debugInfo.nCore);
+                console.log('Number of deltas:', debugInfo.nDelta);
+                console.log('Shape parameters:', {
+                    left: debugInfo.shapeL,
+                    right: debugInfo.shapeR,
+                    top: debugInfo.shapeT,
+                    bottom: debugInfo.shapeB,
+                    middle: debugInfo.shapeM
+                });
+                console.log('Ridge frequencies:', {
+                    minF: debugInfo.minF,
+                    maxF: debugInfo.maxF
+                });
+                console.log('Core points:', debugInfo.cores);
+                console.log('Delta points:', debugInfo.deltas);
+                
+                const fpData = currentFingerprint.getFingerprint();
+                const width = currentFingerprint.getWidth();
+                const height = currentFingerprint.getHeight();
+                
+                const canvas = document.getElementById('fingerprintCanvas');
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext('2d');
+                
+                const imageData = ctx.createImageData(width, height);
+                for (let i = 0; i < fpData.length; i++) {
+                    const value = Math.floor(fpData[i] * 255);
+                    const baseIndex = i * 4;
+                    imageData.data[baseIndex] = value;     // R
+                    imageData.data[baseIndex + 1] = value; // G
+                    imageData.data[baseIndex + 2] = value; // B
+                    imageData.data[baseIndex + 3] = 255;   // A
+                }
+                
+                ctx.putImageData(imageData, 0, 0);
+
+                const svg = await potrace(canvas, {
+                    turdsize: 2,
+                    turnpolicy: 4,
+                    alphamax: 1,
+                    opticurve: 1,
+                    opttolerance: 0.2
+                });
+
+                document.getElementById('svgOutput').innerHTML = svg;
+                status.textContent = 'Vectorization complete!';
+
+            } catch (error) {
+                console.error('Error generating fingerprint:', error);
+                status.textContent = 'Error: ' + error.message;
+            } finally {
+                button.disabled = false;
+            }
+        };
+
+        // Initialize when the page loads
+        window.init();
+    </script>
+</body>
+</html>

@@ -1,0 +1,4 @@
+*.o
+fingerprint.js
+fingerprint.wasm
+.vscode/
