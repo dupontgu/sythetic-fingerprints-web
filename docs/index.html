@@ -4,8 +4,19 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://dupontgu.github.io/sythetic-fingerprints-web/">
+    <meta property="og:title" content="Synthetic Fingerprint Generator">
+    <meta property="og:description"
+        content="Synthetic Fingerprint Generator (with SVG download!)">
+    <meta property="og:image" content="https://dupontgu.github.io/sythetic-fingerprints-web/print.png">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:site" content="@gvy_dvpont">
+    <meta name="twitter:creator" content="@gvy_dvpont">
+    <meta name="twitter:title" content="Synthetic Fingerprint Generator">
+    <meta name="twitter:description" content="Synthetic Fingerprint Generator (with SVG download!)">
+    <meta name="twitter:image" content="https://dupontgu.github.io/sythetic-fingerprints-web/print.png">
     <title>Synthetic Fingerprint Generator</title>
-    <!-- Google Font -->
     <link
         href="https://fonts.googleapis.com/css2?family=Chewy&family=EB+Garamond:ital,wght@0,400..800;1,400..800&display=swap"
         rel="stylesheet">
@@ -385,10 +396,8 @@
             }
         };
 
-        // Clean up when the page unloads
         window.addEventListener('unload', cleanup);
 
-        // Initialize when the page loads
         window.init();
     </script>
 </body>
