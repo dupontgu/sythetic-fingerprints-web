@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Synthetic Fingerprint Generator</title>
+    <!-- Google Font -->
+    <link href="https://fonts.googleapis.com/css2?family=Chewy&family=EB+Garamond:ital,wght@0,400..800;1,400..800&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 20px auto;
+            padding: 0 20px;
+            text-align: center;
+        }
+
+        h1 {
+            font-family: 'Chewy', sans-serif;
+            color: #630101;
+            letter-spacing: 1px;
+            margin-bottom: 30px;
+        }
+
+        canvas {
+            display: none;
+        }
+
+        .button-stack {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        button {
+            width: 200px;
+            padding: 10px 20px;
+            background: #630101;
+            color: white;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background: #851010;
+        }
+
+        button:disabled {
+            background: #cccccc;
+        }
+
+        .status {
+            color: #666;
+            font-style: italic;
+        }
+
+        #svgOutput {
+            margin: 20px auto;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 50vh;
+            margin-bottom: 30px;
+        }
+
+        #svgOutput svg {
+            width: auto;
+            height: 50vh;
+        }
+
+        /* Spinner */
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid #f3f3f3;
+            border-radius: 50%;
+            border-top: 4px solid #007bff;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        /* Modal Styles */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0, 0, 0, 0.4);
+        }
+
+        .modal-content {
+            background-color: #fefefe;
+            margin: 15% auto;
+            padding: 20px;
+            border: 1px solid #888;
+            width: 80%;
+            max-width: 500px;
+            border-radius: 5px;
+            text-align: left;
+        }
+
+        .modal-close {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .modal-close:hover {
+            color: black;
+        }
+
+        /* Bottom Links */
+        .page-footer {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            padding: 10px;
+            background-color: #f8f9fa;
+            font-size: 14px;
+            color: #666;
+            text-align: center;
+            box-shadow: 0 -2px 5px rgba(0, 0, 0, 0.05);
+        }
+
+        .page-footer a {
+            color: #630101;
+            text-decoration: none;
+            margin: 0 10px;
+        }
+
+        .page-footer a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Synthetic Fingerprint Generator</h1>
+
+    <canvas id="fingerprintCanvas"></canvas>
+    <div id="svgOutput">
+        <div id="spinner" class="spinner"></div>
+    </div>
+
+    <div class="button-stack">
+        <button id="regenerateButton" onclick="regenerateFingerprint()">Gimme Another</button>
+        <button id="downloadButton" onclick="downloadSVG()">Download SVG</button>
+    </div>
+
+    <!-- About Modal -->
+    <div id="aboutModal" class="modal">
+        <div class="modal-content">
+            <span class="modal-close" onclick="closeModal('aboutModal')">&times;</span>
+            <h2>About</h2>
+            <p>
+            <ul>
+                <li>The fingerprints are seeded by a V4 UUID. You can specify the UUID by passing it as a query parameter: ?seed=[UUID]. <a href="https://everyuuid.com/">Look here</a> if you need help picking one.</li>
+                <li>The underlying generation algorithm is based on <a
+                        href="https://biolab.csr.unibo.it/research.asp?organize=Activities&select=&selObj=12&pathSubj=111%7C%7C12&">SFinGe</a>
+                </li>
+                <li>The implementation is written in C++ and was inspired by <a
+                        href="https://github.com/zikohcth/sfinge">this one.</a></li>
+                <li>I used <a href="https://www.anthropic.com/claude">Claude </a> to help strip out the OpenCV
+                    dependencies and compile down to WASM.</li>
+                <li>I used a <a href="https://github.com/tomayac/esm-potrace-wasm">WASM port of Potrace</a> to vectorize
+                    the generated bitmap fingerprint</li>
+            </ul>
+            </p>
+        </div>
+    </div>
+
+    <!-- Page Footer -->
+    <div class="page-footer">
+        <a href="#" onclick="openModal('aboutModal'); return false;">About this project</a> |
+        <a href="https://guydupont.com" target="_blank">Made by Guy Dupont</a>
+    </div>
+
+    <script type="module">
+        import createFingerprint from './fingerprint.js';
+        import { potrace, init } from 'https://cdn.jsdelivr.net/npm/esm-potrace-wasm/+esm';
+
+        let currentFingerprint = null;
+        let currentUUID = '';
+
+        function forceUpdate() {
+            return new Promise(resolve => setTimeout(resolve, 20));
+        }
+
+        function cleanup() {
+            if (currentFingerprint) {
+                try {
+                    currentFingerprint.delete();
+                } catch (e) {
+                    console.error('Error cleaning up fingerprint:', e);
+                }
+                currentFingerprint = null;
+            }
+        }
+
+        function isValidUUID(uuid) {
+            const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+            return uuidRegex.test(uuid);
+        }
+
+        function generateRandomUUID() {
+            return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+                var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+                return v.toString(16);
+            });
+        }
+
+        window.regenerateFingerprint = async function () {
+            currentUUID = generateRandomUUID();
+            await generateFingerprint();
+            // Update URL without reloading page
+            history.pushState(null, '', window.location.pathname);
+        }
+
+        window.downloadSVG = function () {
+            const svgOutput = document.getElementById('svgOutput');
+            const svgElement = svgOutput.querySelector('svg');
+
+            if (!svgElement) return;
+
+            const svgData = new XMLSerializer().serializeToString(svgElement);
+            const blob = new Blob([svgData], { type: 'image/svg+xml' });
+            const url = URL.createObjectURL(blob);
+
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `fingerprint-${currentUUID}.svg`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+        }
+
+        window.openModal = function (modalId) {
+            document.getElementById(modalId).style.display = 'block';
+        }
+
+        window.closeModal = function (modalId) {
+            document.getElementById(modalId).style.display = 'none';
+        }
+
+        async function generateFingerprint() {
+            const svgOutput = document.getElementById('svgOutput');
+
+            if (!currentUUID) {
+                currentUUID = generateRandomUUID();
+            }
+
+            svgOutput.innerHTML = '<div id="spinner" class="spinner"></div>';
+            await forceUpdate();
+
+            cleanup();
+
+            try {
+                currentFingerprint = new window.fingerprintModule.Fingerprint();
+                currentFingerprint.generateFromSeed(currentUUID);
+
+                const fpData = currentFingerprint.getFingerprint();
+                const width = currentFingerprint.getWidth();
+                const height = currentFingerprint.getHeight();
+
+                const canvas = document.getElementById('fingerprintCanvas');
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext('2d');
+
+                const imageData = ctx.createImageData(width, height);
+                for (let i = 0; i < fpData.length; i++) {
+                    const value = Math.floor(fpData[i] * 255);
+                    const baseIndex = i * 4;
+                    imageData.data[baseIndex] = value;
+                    imageData.data[baseIndex + 1] = value;
+                    imageData.data[baseIndex + 2] = value;
+                    imageData.data[baseIndex + 3] = 255;
+                }
+
+                ctx.putImageData(imageData, 0, 0);
+
+                const svgString = await potrace(canvas, {
+                    turdsize: 2,
+                    turnpolicy: 4,
+                    alphamax: 1,
+                    opticurve: 1,
+                    opttolerance: 0.2
+                });
+
+                // Parse the SVG and add metadata
+                const parser = new DOMParser();
+                const svgDoc = parser.parseFromString(svgString, 'image/svg+xml');
+                const svgElement = svgDoc.documentElement;
+
+                // Add metadata
+                const metadata = document.createElementNS('http://www.w3.org/2000/svg', 'metadata');
+                const metadataContent = `
+                    <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" 
+                             xmlns:dc="http://purl.org/dc/elements/1.1/">
+                        <rdf:Description rdf:about="">
+                            <dc:title>Synthetic Fingerprint</dc:title>
+                            <dc:creator>Guy Dupont</dc:creator>
+                            <dc:source>https://guydupont.com</dc:source>
+                            <dc:date>${new Date().toISOString()}</dc:date>
+                            <dc:description>Synthetic fingerprint generated from UUID: ${currentUUID}</dc:description>
+                        </rdf:Description>
+                    </rdf:RDF>
+                `;
+                metadata.innerHTML = metadataContent;
+                svgElement.insertBefore(metadata, svgElement.firstChild);
+
+                // Serialize back to string
+                const serializer = new XMLSerializer();
+                const finalSvgString = serializer.serializeToString(svgDoc);
+
+                svgOutput.innerHTML = finalSvgString;
+
+            } catch (error) {
+                console.error('Error generating fingerprint:', error);
+                svgOutput.innerHTML = '<div class="error">Generation failed</div>';
+            }
+        }
+
+        window.init = async function () {
+            try {
+                window.fingerprintModule = await createFingerprint();
+                await init();
+                console.log('Modules loaded');
+
+                // Check for seed in URL
+                const urlParams = new URLSearchParams(window.location.search);
+                const seedParam = urlParams.get('seed');
+
+                // Generate fingerprint
+                if (seedParam) {
+                    if (isValidUUID(seedParam)) {
+                        currentUUID = seedParam;
+                        await generateFingerprint();
+                    } else {
+                        alert('Invalid UUID provided in URL. Generating a random fingerprint.');
+                        currentUUID = generateRandomUUID();
+                        await generateFingerprint();
+                        // Remove invalid seed from URL
+                        history.replaceState(null, '', window.location.pathname);
+                    }
+                } else {
+                    // Generate random UUID and fingerprint automatically
+                    currentUUID = generateRandomUUID();
+                    await generateFingerprint();
+                }
+
+            } catch (error) {
+                console.error('Failed to load modules:', error);
+                document.getElementById('svgOutput').innerHTML = 'Error loading modules: ' + error.message;
+            }
+        };
+
+        // Clean up when the page unloads
+        window.addEventListener('unload', cleanup);
+
+        // Initialize when the page loads
+        window.init();
+    </script>
+</body>
+
+</html>

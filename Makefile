@@ -18,9 +18,13 @@ CXXFLAGS = -O3 \
 
 SOURCES = matrix.cpp imgproc.cpp finge.cpp wasm_wrap.cpp
 OBJECTS = $(SOURCES:.cpp=.o)
-TARGET = fingerprint.js
+DIST_DIR = dist
+TARGET = $(DIST_DIR)/fingerprint.js
 
-all: $(TARGET)
+all: $(DIST_DIR) $(TARGET)
+
+$(DIST_DIR):
+	mkdir -p $(DIST_DIR)
 
 $(TARGET): $(OBJECTS)
 	$(CXX) $(CXXFLAGS) -o $@ $(OBJECTS)
@@ -29,6 +33,6 @@ $(TARGET): $(OBJECTS)
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 clean:
-	rm -f $(OBJECTS) $(TARGET) fingerprint.wasm
+	rm -rf $(DIST_DIR) $(OBJECTS)
 
 .PHONY: clean all
